@@ -1,0 +1,105 @@
+---
+title: "Project1_v5"
+author: "JLB"
+date: "2023-02-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(caret)
+library(rpart)
+library(randomForest)
+
+wine = read_rds("https://raw.githubusercontent.com/bobbyjy/MyData/main/pinot.rds")
+
+wine_words <- function(df, j = 1000, stem=F){ 
+  library(tidytext)
+  library(SnowballC)
+  data(stop_words)
+
+  words <- df %>%
+    unnest_tokens(word, description) %>%
+    anti_join(stop_words) %>% # get rid of stop words
+    filter(!(word %in% c("wine","pinot","vineyard")))
+  
+  if(stem){
+    words <- words %>% 
+      mutate(word = wordStem(word))
+  }
+  
+  words <- words %>% 
+    count(id, word) %>% 
+    group_by(id) %>% 
+    mutate(exists = (n>0)) %>% 
+    ungroup %>% 
+    group_by(word) %>% 
+    mutate(total = sum(n)) %>% 
+    filter(total > j) %>% 
+    pivot_wider(id_cols = id, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+    right_join(select(df,id,province)) %>% 
+    select(-id) %>% 
+    mutate(across(-province, ~replace_na(.x, F)))
+}
+
+```
+
+```{r}
+#kappa of 0.7381
+wino <- wine_words(wine, j=500, stem = T)
+wino$price <- wine$price
+wino$points <- wine$points
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 3)
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf",
+             trControl = ctrl)
+
+fit
+
+pred <- predict(fit, newdata=test)
+confusionMatrix(factor(pred),factor(test$province))
+```
+
+```{r}
+#kappa of 0.7391 w/o log price
+#kappa of 0.7411 w/ log price and 3 repeats
+set.seed(504)
+
+weight_train <- train %>% 
+  mutate(weights=case_when(
+    province=="Burgundy" ~ 3,
+    province=="California" ~ 1,
+    province=="Casablanca_Valley" ~ 37,
+    province=="Marlborough" ~ 18.5,
+    province=="New_York" ~ 37,
+    province=="Oregon" ~ 1.4))
+
+wino <- wine_words(wine, j=500, stem = T)
+wino$price <- log(wine$price)
+wino$points <- wine$points
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf",
+             weights = weight_train$weights,
+             trControl = ctrl)
+
+fit
+
+pred <- predict(fit, newdata=test)
+confusionMatrix(factor(pred),factor(test$province))
+```
