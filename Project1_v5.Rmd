@@ -16,6 +16,21 @@ library(randomForest)
 
 wine = read_rds("https://raw.githubusercontent.com/bobbyjy/MyData/main/pinot.rds")
 
+casa <- wine %>% 
+  filter(province=='Casablanca_Valley')
+
+marl <- wine %>% 
+  filter(province=='Marlborough')
+
+york <- wine %>% 
+  filter(province=='New_York')
+
+wine<-rbind(wine,
+      casa,casa,casa,casa,casa,casa,casa,casa,casa,
+      marl,marl,marl,marl,marl,marl,marl,marl,marl,
+      york,york,york,york,york,york,york,york,york)
+
+
 wine_words <- function(df, j = 1000, stem=F){ 
   library(tidytext)
   library(SnowballC)
@@ -68,6 +83,18 @@ fit
 pred <- predict(fit, newdata=test)
 confusionMatrix(factor(pred),factor(test$province))
 ```
+```{r}
+wine = read_rds("https://raw.githubusercontent.com/bobbyjy/MyData/main/pinot.rds")
+wino <- wine_words(wine, j=100, stem = T)
+wino$price <- wine$price
+wino$points <- wine$points
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+pred <- predict(fit, newdata=test)
+confusionMatrix(factor(pred),factor(test$province))
+```
 
 ```{r}
 #kappa of 0.7391 w/o log price
@@ -76,11 +103,11 @@ set.seed(504)
 
 weight_train <- train %>% 
   mutate(weights=case_when(
-    province=="Burgundy" ~ 3,
+    province=="Burgundy" ~ 1,
     province=="California" ~ 1,
-    province=="Casablanca_Valley" ~ 37,
-    province=="Marlborough" ~ 18.5,
-    province=="New_York" ~ 37,
+    province=="Casablanca_Valley" ~ 1,
+    province=="Marlborough" ~ 1,
+    province=="New_York" ~ 1,
     province=="Oregon" ~ 1.4))
 
 wino <- wine_words(wine, j=500, stem = T)
